@@ -607,3 +607,57 @@ def answer_question(
             "status": "error"
         }
 
+
+def ingest_document(
+    file_path: str,
+    document_name: Optional[str] = None,
+    owner: str = "default_owner",
+    document_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Ingest a document from a local file path (Bridge for Member 1 backend_adapter).
+    Reuses Member 2's backend.document_processor.process_document if available.
+    """
+    if not file_path or not os.path.exists(file_path):
+        return {
+            "success": False,
+            "document_id": "",
+            "filename": document_name or os.path.basename(file_path or ""),
+            "status": "failed",
+            "message": f"File not found: '{file_path}'",
+            "is_mock": False
+        }
+
+    doc_name = document_name or os.path.basename(file_path)
+    doc_id = document_id or f"doc_{uuid.uuid4().hex[:10]}"
+
+    try:
+        from backend.document_processor import process_document
+        chunks = process_document(file_path, document_id=doc_id)
+        save_document_metadata({
+            "document_id": doc_id,
+            "document_name": doc_name,
+            "owner": owner,
+            "content_type": "application/pdf"
+        })
+        save_chunks(chunks)
+        return {
+            "success": True,
+            "document_id": doc_id,
+            "filename": doc_name,
+            "document_name": doc_name,
+            "status": "indexed",
+            "total_chunks": len(chunks),
+            "message": f"Successfully indexed '{doc_name}' ({len(chunks)} chunks).",
+            "is_mock": False
+        }
+    except Exception:
+        # Fallback to ingest_pdf
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+        res = ingest_pdf(file_bytes, document_name=doc_name, owner=owner, document_id=doc_id)
+        res["success"] = (res.get("status") == "success")
+        res["filename"] = doc_name
+        res["is_mock"] = False
+        return res
+
