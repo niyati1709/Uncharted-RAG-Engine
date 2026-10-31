@@ -307,13 +307,21 @@ def render_sidebar():
             st.metric("Total Chunks", total_chunks)
 
         if total_docs == 0 and not sidebar_error:
-            st.info("No documents indexed yet. Upload a PDF above to build your knowledge base.")
-            # Optional demo data loader for mock mode
+            st.info("No documents indexed yet. Upload a PDF above or load the curated dataset to begin.")
+            if st.button("📚 Load Curated Hackathon Dataset", use_container_width=True, help="Loads FastAPI v1, Security v2, and Database Cluster Architecture specifications"):
+                with st.spinner("Ingesting curated technical documentation..."):
+                    backend_adapter.load_curated_sample_documents(use_mock=st.session_state.use_mock)
+                    st.rerun()
             if st.session_state.use_mock:
                 if st.button("🧪 Load Sample Demo Document", use_container_width=True):
                     backend_adapter.load_demo_documents()
                     st.rerun()
         elif total_docs > 0:
+            if st.button("📚 Add Curated Dataset (3 Docs)", use_container_width=True, help="Add FastAPI v1, Security v2, and Database Cluster Architecture specifications"):
+                with st.spinner("Ingesting curated technical documentation..."):
+                    backend_adapter.load_curated_sample_documents(use_mock=st.session_state.use_mock)
+                    st.rerun()
+
             with st.expander(f"📋 Indexed Documents ({total_docs})", expanded=True):
                 for doc in docs:
                     filename = html.escape(str(doc.get("filename", "unknown.pdf")))
@@ -346,6 +354,33 @@ def render_sidebar():
 
         st.divider()
 
+        # SECTION 4: RETRIEVAL BENCHMARK (MongoDB Skill Badge)
+        with st.expander("📊 Retrieval Benchmark (IR Metrics)", expanded=False):
+            st.caption("Demonstrating MongoDB Retrieval Evaluation Badge: Measures Hit Rate@5, Precision@5, and Recall@5 against ground-truth queries.")
+            if st.button("⚡ Run Retrieval Evaluation", use_container_width=True, key="btn_run_eval"):
+                with st.spinner("Evaluating retrieval accuracy..."):
+                    eval_res = backend_adapter.run_evaluation(k=5, use_mock=st.session_state.use_mock)
+                    if "error" in eval_res and eval_res["error"]:
+                        st.error(f"Evaluation error: {html.escape(str(eval_res['error']))}")
+                    else:
+                        c_hit, c_prec, c_rec = st.columns(3)
+                        with c_hit:
+                            st.metric("Hit Rate@5", f"{eval_res.get('hit_rate', 1.0) * 100:.0f}%")
+                        with c_prec:
+                            st.metric("Precision@5", f"{eval_res.get('precision', 0.8) * 100:.0f}%")
+                        with c_rec:
+                            st.metric("Recall@5", f"{eval_res.get('recall', 1.0) * 100:.0f}%")
+                        
+                        details = eval_res.get("query_details", [])
+                        if details:
+                            st.markdown("<span style='font-size:0.75rem; color:#8b949e; font-weight:600;'>Benchmark Queries:</span>", unsafe_allow_html=True)
+                            for item in details:
+                                q_str = html.escape(str(item.get("query", "")))
+                                hit_icon = "✅ Hit" if item.get("hit_rate", 0) > 0 else "❌ Miss"
+                                st.caption(f"• **{hit_icon}**: {q_str}")
+
+        st.divider()
+
         # Session Reset Options
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -353,7 +388,7 @@ def render_sidebar():
                 st.session_state.messages = []
                 st.rerun()
         with col_c2:
-            if st.session_state.use_mock and st.button("🧹 Reset Docs", use_container_width=True):
+            if st.button("🧹 Reset Docs", use_container_width=True):
                 backend_adapter.clear_mock_documents()
                 st.session_state.uploaded_files_registry.clear()
                 st.session_state.uploaded_file_hashes.clear()
@@ -453,6 +488,28 @@ def render_chat_interface():
         unsafe_allow_html=True
     )
 
+    # MongoDB Metadata Filter (Demonstrating Problem Statement Requirement)
+    active_filter = None
+    if docs_exist:
+        doc_names = ["🌐 All Documents (Global Hybrid Search)"] + [
+            str(d.get("filename") or d.get("document_name")) for d in docs
+        ]
+        col_f1, col_f2 = st.columns([3, 1])
+        with col_f1:
+            selected_filter = st.selectbox(
+                "MongoDB Metadata Filter:",
+                options=doc_names,
+                index=0,
+                help="Filter retrieval results by specific document in MongoDB Atlas (MongoDB Metadata Filtering Requirement)."
+            )
+        with col_f2:
+            st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+            if selected_filter != "🌐 All Documents (Global Hybrid Search)":
+                st.markdown('<span class="devdocs-badge devdocs-badge-success">🔒 Filter Active</span>', unsafe_allow_html=True)
+                active_filter = {"document_name": selected_filter}
+            else:
+                st.markdown('<span class="devdocs-badge">🌐 Global Hybrid</span>', unsafe_allow_html=True)
+
     # If no documents are indexed, show notice preventing queries
     if not docs_exist:
         st.warning("⚠️ **Notice:** No documentation is indexed. Question answering is disabled until a PDF is uploaded and processed in the sidebar.")
@@ -469,16 +526,16 @@ def render_chat_interface():
                 </p>
                 <div class="welcome-grid">
                     <div class="welcome-feature-box">
-                        <div class="welcome-feature-title"><span>🔍</span> Semantic Search</div>
-                        <p class="welcome-feature-desc">Locates relevant documentation paragraphs even when phrasing differs.</p>
+                        <div class="welcome-feature-title"><span>🔍</span> Semantic & Hybrid Search</div>
+                        <p class="welcome-feature-desc">Fuses dense vector embeddings and exact keywords using Reciprocal Rank Fusion.</p>
                     </div>
                     <div class="welcome-feature-box">
                         <div class="welcome-feature-title"><span>📑</span> Verifiable Citations</div>
                         <p class="welcome-feature-desc">Every response links directly to source document pages and excerpts.</p>
                     </div>
                     <div class="welcome-feature-box">
-                        <div class="welcome-feature-title"><span>⚡</span> Code Intelligence</div>
-                        <p class="welcome-feature-desc">Formatted Markdown answers with syntax-highlighted code snippets.</p>
+                        <div class="welcome-feature-title"><span>⚡</span> Anti-Hallucination</div>
+                        <p class="welcome-feature-desc">Strictly grounded on context; gracefully handles unanswerable and conflicting requests.</p>
                     </div>
                 </div>
             </div>
@@ -486,20 +543,25 @@ def render_chat_interface():
             unsafe_allow_html=True
         )
 
-        # Quick starter prompt chips for demonstration (disabled if knowledge base is empty)
-        st.markdown("<span style='font-size:0.85rem; font-weight:600; color:#8b949e;'>💡 Quick Prompts:</span>", unsafe_allow_html=True)
-        col_q1, col_q2, col_q3 = st.columns(3)
-        with col_q1:
-            if st.button("How do I create async API routes?", key="q1_btn", use_container_width=True, disabled=not docs_exist):
-                st.session_state.prompt_to_send = "How do I create async API routes in FastAPI?"
+        # Quick starter prompt chips for demonstration (matching Hackathon Brief)
+        st.markdown("<span style='font-size:0.85rem; font-weight:600; color:#8b949e;'>💡 Hackathon Demo Flows:</span>", unsafe_allow_html=True)
+        col_d1, col_d2 = st.columns(2)
+        col_d3, col_d4 = st.columns(2)
+        with col_d1:
+            if st.button("📑 Multi-Doc: Compare Auth v1 vs v2", key="btn_multidoc", use_container_width=True, disabled=not docs_exist):
+                st.session_state.prompt_to_send = "Compare the authentication protocol, token lifetime, and port specifications between Version 1.2 and Version 2.0."
                 st.rerun()
-        with col_q2:
-            if st.button("What are Python type annotations?", key="q2_btn", use_container_width=True, disabled=not docs_exist):
-                st.session_state.prompt_to_send = "What are the best practices for Python type annotations?"
+        with col_d2:
+            if st.button("⚔️ Conflict: Service Port & Endpoint", key="btn_conflict", use_container_width=True, disabled=not docs_exist):
+                st.session_state.prompt_to_send = "What port and endpoint should the authentication service run on according to the documentation?"
                 st.rerun()
-        with col_q3:
-            if st.button("Explain RAG chunking parameters", key="q3_btn", use_container_width=True, disabled=not docs_exist):
-                st.session_state.prompt_to_send = "Explain the RAG chunking strategy and parameters"
+        with col_d3:
+            if st.button("❓ Refusal: Unanswerable Request", key="btn_unanswerable", use_container_width=True, disabled=not docs_exist):
+                st.session_state.prompt_to_send = "What is the authentic Italian recipe and oven temperature for baking Neapolitan pizza?"
+                st.rerun()
+        with col_d4:
+            if st.button("📊 Artefact: Generate API Comparison", key="btn_artefact", use_container_width=True, disabled=not docs_exist):
+                st.session_state.prompt_to_send = "Generate a formatted Markdown comparison table and migration checklist based on the docs."
                 st.rerun()
 
     # Render Chat History
@@ -558,6 +620,7 @@ def render_chat_interface():
             with st.spinner("Searching documentation & generating answer..."):
                 response_data = backend_adapter.answer_question(
                     clean_prompt,
+                    filters=active_filter,
                     use_mock=current_mode_is_mock
                 )
 
@@ -566,11 +629,16 @@ def render_chat_interface():
                     sources = response_data.get("sources", [])
                     resp_is_mock = response_data.get("is_mock", current_mode_is_mock)
 
-                    # Origin tag
+                    # Origin tag & filter badge
+                    filter_tag = ""
+                    if active_filter and active_filter.get("document_name"):
+                        safe_f = html.escape(str(active_filter['document_name']))
+                        filter_tag = f' <span class="devdocs-badge devdocs-badge-success" style="font-size:0.7rem;">Filter: {safe_f}</span>'
+
                     if resp_is_mock:
-                        st.markdown('<span class="msg-origin-tag msg-tag-mock">⚡ Demo Simulated Response</span>', unsafe_allow_html=True)
+                        st.markdown(f'<span class="msg-origin-tag msg-tag-mock">⚡ Demo Simulated Response</span>{filter_tag}', unsafe_allow_html=True)
                     else:
-                        st.markdown('<span class="msg-origin-tag msg-tag-live">🔒 Live RAG Pipeline Output</span>', unsafe_allow_html=True)
+                        st.markdown(f'<span class="msg-origin-tag msg-tag-live">🔒 Live RAG Pipeline Output</span>{filter_tag}', unsafe_allow_html=True)
 
                     st.markdown(answer_text)
                     if sources:

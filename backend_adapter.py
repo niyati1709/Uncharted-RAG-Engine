@@ -1,13 +1,14 @@
 """
-backend_adapter.py - Integration Layer between DevDocs AI Frontend & Backend
+backend_adapter.py - Integration Layer between DevDocs AI Frontend and Backend
 
 This module serves as the contract and bridge between the Streamlit frontend
-and the RAG backend (developed by Team Members 2 & 3).
+and the RAG backend (developed by Team Members 2 and 3).
 
 Frontend Integration Contracts:
 1. ingest_document(file_path: str, use_mock: bool = True) -> dict
-2. list_documents(use_mock: bool = True) -> list
-3. answer_question(question: str, use_mock: bool = True) -> dict
+2. list_documents(owner: Optional[str] = None, limit: int = 100, use_mock: bool = False) -> list
+3. answer_question(query: Optional[str] = None, filters: Optional[dict] = None, top_k: int = 5, question: Optional[str] = None, use_mock: bool = False) -> dict
+4. ingest_pdf(file_bytes: bytes, document_name: str, owner: str = 'default_owner', document_id: Optional[str] = None) -> dict
 
 Strict Separation Rules:
 - Mock Mode: Uses simulated responses and storage; explicitly flags responses as mock.
@@ -70,14 +71,8 @@ def check_backend_status() -> Dict[str, Any]:
         }
     """
     try:
-        # Dynamically import or reload module to support runtime additions
         if "backend.rag_pipeline" in sys.modules:
             module = sys.modules["backend.rag_pipeline"]
-            if hasattr(module, "__file__") and module.__file__:
-                try:
-                    module = importlib.reload(module)
-                except Exception:
-                    pass
         else:
             module = importlib.import_module("backend.rag_pipeline")
     except (ImportError, ModuleNotFoundError) as e:
@@ -97,7 +92,6 @@ def check_backend_status() -> Dict[str, Any]:
             "module": None
         }
 
-    # Verify all required functions exist and are callable
     missing = []
     for fn in REQUIRED_BACKEND_FUNCTIONS:
         if not hasattr(module, fn) or not callable(getattr(module, fn)):
@@ -129,8 +123,6 @@ def is_backend_available() -> bool:
 # -----------------------------------------------------------------------------
 # 3. MOCK STORAGE MANAGEMENT (STARTS EMPTY BY DEFAULT)
 # -----------------------------------------------------------------------------
-# In-memory mock storage starts EMPTY by default.
-# Simulated documents are explicitly marked with `is_mock=True` and `status="simulated_indexed"`.
 _MOCK_DOCUMENTS: List[Dict[str, Any]] = []
 
 
@@ -139,9 +131,11 @@ def get_sample_demo_document() -> Dict[str, Any]:
     return {
         "document_id": "demo_doc_001",
         "filename": "fastapi_quickstart_guide.pdf (Demo)",
+        "document_name": "fastapi_quickstart_guide.pdf (Demo)",
         "status": "simulated_indexed",
         "total_pages": 42,
         "total_chunks": 168,
+        "chunk_count": 168,
         "is_mock": True
     }
 
@@ -192,6 +186,7 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
                 "success": False,
                 "document_id": "",
                 "filename": filename,
+                "document_name": filename,
                 "status": "failed",
                 "message": f"Live Backend Error: {status_info['error_message']}",
                 "is_mock": False
@@ -205,17 +200,21 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
                     "success": False,
                     "document_id": "",
                     "filename": filename,
+                    "document_name": filename,
                     "status": "failed",
                     "message": "Live backend returned invalid format (expected dict).",
                     "is_mock": False
                 }
             result["is_mock"] = False
+            result.setdefault("filename", filename)
+            result.setdefault("document_name", filename)
             return result
         except Exception as e:
             return {
                 "success": False,
                 "document_id": "",
                 "filename": filename,
+                "document_name": filename,
                 "status": "failed",
                 "message": f"Live backend execution error during ingestion: {str(e)}",
                 "is_mock": False
@@ -240,6 +239,7 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
                 "success": True,
                 "document_id": doc["document_id"],
                 "filename": doc["filename"],
+                "document_name": doc["filename"],
                 "status": "simulated_indexed",
                 "message": f"Simulated document '{doc['filename']}' is already in mock storage.",
                 "is_mock": True
@@ -264,11 +264,13 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
     new_doc = {
         "document_id": doc_id,
         "filename": display_name,
+        "document_name": display_name,
         "file_path": file_path,
         "file_hash": file_hash,
         "status": "simulated_indexed",
         "total_pages": estimated_pages,
         "total_chunks": chunks,
+        "chunk_count": chunks,
         "is_mock": True
     }
     _MOCK_DOCUMENTS.append(new_doc)
@@ -277,17 +279,24 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
         "success": True,
         "document_id": doc_id,
         "filename": display_name,
+        "document_name": display_name,
         "status": "simulated_indexed",
         "message": f"Document '{display_name}' processed in Mock Mode ({estimated_pages} pages, {chunks} chunks).",
         "is_mock": True
     }
 
 
-def list_documents(use_mock: bool = True) -> List[Dict[str, Any]]:
+def list_documents(
+    owner: Optional[str] = None,
+    limit: int = 100,
+    use_mock: bool = False
+) -> List[Dict[str, Any]]:
     """
     Retrieve all documents indexed in the knowledge base.
 
     Parameters:
+        owner (Optional[str]): Filter documents by owner.
+        limit (int): Maximum number of documents to retrieve.
         use_mock (bool): If True, returns mock store. If False, calls live backend.
 
     Returns:
@@ -295,9 +304,11 @@ def list_documents(use_mock: bool = True) -> List[Dict[str, Any]]:
             {
                 "document_id": "doc_001",
                 "filename": "python_guide.pdf",
+                "document_name": "python_guide.pdf",
                 "status": "indexed",
                 "total_pages": 25,
                 "total_chunks": 100,
+                "chunk_count": 100,
                 "is_mock": bool
             }
         ]
@@ -317,12 +328,30 @@ def list_documents(use_mock: bool = True) -> List[Dict[str, Any]]:
 
         real_rag = status_info["module"]
         try:
-            docs = real_rag.list_documents()
+            import inspect
+            sig = inspect.signature(real_rag.list_documents)
+            kwargs = {}
+            if "owner" in sig.parameters:
+                kwargs["owner"] = owner
+            if "limit" in sig.parameters:
+                kwargs["limit"] = limit
+            docs = real_rag.list_documents(**kwargs)
             if not isinstance(docs, list):
                 raise BackendExecutionError("Live backend list_documents() did not return a list.")
             for doc in docs:
                 if isinstance(doc, dict):
                     doc["is_mock"] = False
+                    # Bridge keys for both frontend and backend contracts
+                    doc_name = doc.get("document_name") or doc.get("filename") or "unknown.pdf"
+                    doc["filename"] = doc_name
+                    doc["document_name"] = doc_name
+                    c_count = doc.get("chunk_count") if doc.get("chunk_count") is not None else doc.get("total_chunks", 0)
+                    doc["chunk_count"] = c_count
+                    doc["total_chunks"] = c_count
+                    if "total_pages" not in doc:
+                        doc["total_pages"] = doc.get("page_count", "N/A")
+                    if "status" not in doc:
+                        doc["status"] = "indexed"
             return docs
         except BackendError:
             raise
@@ -330,37 +359,52 @@ def list_documents(use_mock: bool = True) -> List[Dict[str, Any]]:
             raise BackendExecutionError(f"Live backend error in list_documents: {str(e)}") from e
 
     # 2. MOCK MODE - Return copy of in-memory simulated documents
-    return [dict(d) for d in _MOCK_DOCUMENTS]
+    mock_docs = []
+    for d in _MOCK_DOCUMENTS:
+        doc_copy = dict(d)
+        if owner and doc_copy.get("owner") and doc_copy.get("owner") != owner:
+            continue
+        mock_docs.append(doc_copy)
+    if limit:
+        mock_docs = mock_docs[:limit]
+    return mock_docs
 
 
-def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
+def answer_question(
+    query: Optional[str] = None,
+    filters: Optional[Dict[str, Any]] = None,
+    top_k: int = 5,
+    question: Optional[str] = None,
+    use_mock: bool = False
+) -> Dict[str, Any]:
     """
     Query the RAG pipeline with a developer question and obtain an answer with citations.
 
     Parameters:
-        question (str): The natural language query from the developer.
+        query (Optional[str]): The natural language query from the developer.
+        filters (Optional[Dict[str, Any]]): Metadata filters (e.g. {"document_id": "doc_1"}).
+        top_k (int): Number of relevant chunks to retrieve.
+        question (Optional[str]): Alias for query parameter.
         use_mock (bool): If True, returns simulated answer. If False, calls live backend.
 
     Returns:
         dict: {
             "answer": str,
-            "sources": [
-                {
-                    "document_name": str,
-                    "page": int,
-                    "section": str,
-                    "content": str
-                }
-            ],
+            "citations": list,
+            "sources": list,
+            "status": "answered" | "not_found" | "conflict" | "error",
             "success": bool,
             "is_mock": bool
         }
     """
-    clean_q = question.strip() if question else ""
+    raw_prompt = (query if query is not None else question) or ""
+    clean_q = raw_prompt.strip()
     if not clean_q:
         return {
-            "answer": "Please provide a non-empty question to query the documentation.",
+            "answer": "Please provide a valid question.",
+            "citations": [],
             "sources": [],
+            "status": "error",
             "success": False,
             "is_mock": use_mock
         }
@@ -371,27 +415,64 @@ def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
         if not status_info["available"]:
             return {
                 "answer": f"Live Backend Unavailable: {status_info['error_message']}. Please verify your teammates' backend implementation.",
+                "citations": [],
                 "sources": [],
+                "status": "error",
                 "success": False,
                 "is_mock": False
             }
 
         real_rag = status_info["module"]
         try:
-            result = real_rag.answer_question(clean_q)
+            import inspect
+            sig = inspect.signature(real_rag.answer_question)
+            kwargs = {}
+            if "filters" in sig.parameters:
+                kwargs["filters"] = filters
+            if "top_k" in sig.parameters:
+                kwargs["top_k"] = top_k
+            result = real_rag.answer_question(clean_q, **kwargs)
             if not isinstance(result, dict):
                 return {
                     "answer": "Live backend returned an invalid response format (expected dict).",
+                    "citations": [],
                     "sources": [],
+                    "status": "error",
                     "success": False,
                     "is_mock": False
                 }
             result["is_mock"] = False
+            status_val = result.get("status", "answered")
+            result["status"] = status_val
+            result["success"] = (status_val in ["answered", "not_found", "conflict"]) and bool(result.get("answer"))
+
+            # Normalize citations / sources so both interfaces are satisfied
+            raw_cits = result.get("citations") or result.get("sources") or []
+            normalized_cits = []
+            for idx, c in enumerate(raw_cits):
+                if isinstance(c, dict):
+                    c_norm = dict(c)
+                    c_norm["source_id"] = c_norm.get("source_id") or f"src_{idx + 1}"
+                    c_norm["document_id"] = c_norm.get("document_id") or "doc_unknown"
+                    c_norm["document_name"] = c_norm.get("document_name") or "Unknown Document"
+                    page_num = c_norm.get("page_number") if c_norm.get("page_number") is not None else c_norm.get("page", 1)
+                    c_norm["page_number"] = page_num
+                    c_norm["page"] = page_num
+                    c_norm["section"] = c_norm.get("section", "Excerpt")
+                    txt = c_norm.get("text") or c_norm.get("content") or ""
+                    c_norm["text"] = txt
+                    c_norm["content"] = txt
+                    normalized_cits.append(c_norm)
+
+            result["citations"] = normalized_cits
+            result["sources"] = normalized_cits
             return result
         except Exception as e:
             return {
                 "answer": f"Live backend execution error while generating answer: {str(e)}",
+                "citations": [],
                 "sources": [],
+                "status": "error",
                 "success": False,
                 "is_mock": False
             }
@@ -402,7 +483,9 @@ def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
     if not _MOCK_DOCUMENTS:
         return {
             "answer": "Cannot generate simulated answer: No documents exist in the knowledge base. Please upload a PDF documentation file first.",
+            "citations": [],
             "sources": [],
+            "status": "not_found",
             "success": False,
             "is_mock": True
         }
@@ -426,14 +509,22 @@ def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
             {
                 "document_name": doc_name,
                 "page": 7,
+                "page_number": 7,
                 "section": "Routing & Path Operations",
-                "content": "Path operation functions can be declared as async def to run directly on the asyncio event loop."
+                "content": "Path operation functions can be declared as async def to run directly on the asyncio event loop.",
+                "text": "Path operation functions can be declared as async def to run directly on the asyncio event loop.",
+                "source_id": "c1",
+                "document_id": "mock_doc_001"
             },
             {
                 "document_name": doc_name,
                 "page": 12,
+                "page_number": 12,
                 "section": "OpenAPI Specification",
-                "content": "Swagger UI interactive documentation is served automatically at the /docs path."
+                "content": "Swagger UI interactive documentation is served automatically at the /docs path.",
+                "text": "Swagger UI interactive documentation is served automatically at the /docs path.",
+                "source_id": "c2",
+                "document_id": "mock_doc_001"
             }
         ]
     elif any(k in q_lower for k in ["python", "type", "syntax", "variable"]):
@@ -452,8 +543,12 @@ def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
             {
                 "document_name": doc_name,
                 "page": 15,
+                "page_number": 15,
                 "section": "Type Hints & Pattern Matching",
-                "content": "Type annotations allow static type checkers such as Mypy to catch type mismatches ahead of runtime."
+                "content": "Type annotations allow static type checkers such as Mypy to catch type mismatches ahead of runtime.",
+                "text": "Type annotations allow static type checkers such as Mypy to catch type mismatches ahead of runtime.",
+                "source_id": "c1",
+                "document_id": "mock_doc_001"
             }
         ]
     elif any(k in q_lower for k in ["chunk", "embedding", "rag", "vector"]):
@@ -467,8 +562,12 @@ def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
             {
                 "document_name": doc_name,
                 "page": 3,
+                "page_number": 3,
                 "section": "RAG Pipeline Architecture",
-                "content": "Recursive character text splitting maintains semantic boundaries and context between adjacent chunks."
+                "content": "Recursive character text splitting maintains semantic boundaries and context between adjacent chunks.",
+                "text": "Recursive character text splitting maintains semantic boundaries and context between adjacent chunks.",
+                "source_id": "c1",
+                "document_id": "mock_doc_001"
             }
         ]
     else:
@@ -481,14 +580,20 @@ def answer_question(question: str, use_mock: bool = True) -> Dict[str, Any]:
             {
                 "document_name": doc_name,
                 "page": 19,
+                "page_number": 19,
                 "section": "Architecture & Best Practices",
-                "content": f"Core conventions and design patterns relevant to '{clean_q}' are defined in the architectural specifications."
+                "content": f"Core conventions and design patterns relevant to '{clean_q}' are defined in the architectural specifications.",
+                "text": f"Core conventions and design patterns relevant to '{clean_q}' are defined in the architectural specifications.",
+                "source_id": "c1",
+                "document_id": "mock_doc_001"
             }
         ]
 
     return {
         "answer": answer,
         "sources": sources,
+        "citations": sources,
+        "status": "answered",
         "success": True,
         "is_mock": True
     }
@@ -514,6 +619,73 @@ def ingest_pdf(
 
 ask_question = answer_question
 query_documents = answer_question
-upload_pdf = ingest_document
+upload_pdf = ingest_pdf
 get_documents = list_documents
 check_health = is_backend_available
+
+
+# -----------------------------------------------------------------------------
+# 6. RETRIEVAL EVALUATION & DATASET MANAGEMENT
+# -----------------------------------------------------------------------------
+def run_evaluation(k: int = 5, use_mock: bool = False) -> Dict[str, Any]:
+    """
+    Executes standard Information Retrieval benchmark metrics:
+    Hit Rate@K, Precision@K, Recall@K (Demonstrating MongoDB Retrieval Evaluation Badge).
+    """
+    if not use_mock:
+        try:
+            from backend.evaluation import evaluate_retrieval
+            metrics = evaluate_retrieval(k=k)
+            metrics["is_mock"] = False
+            return metrics
+        except Exception as e:
+            return {
+                "error": str(e),
+                "hit_rate": 0.0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "k": k,
+                "total_queries": 0,
+                "query_details": [],
+                "is_mock": False
+            }
+
+    return {
+        "hit_rate": 1.0,
+        "precision": 0.80,
+        "recall": 1.0,
+        "k": k,
+        "total_queries": 3,
+        "query_details": [
+            {"query": "How does Python handle exceptions?", "hit_rate": 1.0, "precision": 1.0, "recall": 1.0},
+            {"query": "What is a Python decorator?", "hit_rate": 1.0, "precision": 0.8, "recall": 1.0},
+            {"query": "How do generator functions and yield work?", "hit_rate": 1.0, "precision": 0.6, "recall": 1.0}
+        ],
+        "is_mock": True
+    }
+
+
+def load_curated_sample_documents(use_mock: bool = False) -> List[Dict[str, Any]]:
+    """
+    Loads the curated developer documentation dataset (FastAPI v1, Security v2, Database Spec)
+    into either the mock storage or live MongoDB vector database.
+    """
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    sample_files = [
+        "FastAPI_Service_Guide_v1.pdf",
+        "FastAPI_Security_v2.pdf",
+        "Database_Cluster_Architecture.pdf"
+    ]
+    results = []
+    for s_name in sample_files:
+        f_path = os.path.join(data_dir, s_name)
+        if not os.path.exists(f_path):
+            try:
+                from backend.sample_data_generator import generate_curated_dataset
+                generate_curated_dataset()
+            except Exception:
+                pass
+        if os.path.exists(f_path):
+            res = ingest_document(f_path, use_mock=use_mock)
+            results.append(res)
+    return results

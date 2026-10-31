@@ -1,0 +1,97 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [ 6 0 R 8 0 R ] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Length 1084 >>
+stream
+BT
+50 740 Td
+14 TL
+/F2 16 Tf
+(DevDocs AI - Database and Vector Index Architecture Spec) '
+/F1 10 Tf
+/F2 12 Tf
+(Section 1: MongoDB Atlas Multi-Region Cluster) '
+/F1 10 Tf
+/F1 10 Tf
+(The DevDocs AI storage engine is hosted on MongoDB Atlas M10 dedicated cluster across three availability zones.) '
+/F1 10 Tf
+(Documentation metadata is organized into collection 'documents' and text chunks are stored in 'chunks'.) '
+/F1 10 Tf
+(Each document record tracks document_id, document_name, upload_date, owner, and content_type.) '
+/F1 10 Tf
+(Each chunk record contains chunk_id, document_id, page_number, text, and vector embedding.) '
+14 TL
+/F1 10 Tf
+(Vector search is executed natively in MongoDB Atlas using the specialized $vectorSearch aggregation operator.) '
+/F1 10 Tf
+(The vector index is designated as 'chunks_vector_index' built on the 'embedding' field.) '
+/F1 10 Tf
+(The embedding model is sentence-transformers/all-MiniLM-L6-v2 outputting exactly 384 dimensions.) '
+/F1 10 Tf
+(The index metric type is cosine similarity with 150 candidates evaluated per vector search query.) '
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 941 >>
+stream
+BT
+50 740 Td
+14 TL
+/F2 16 Tf
+(DevDocs AI - Database and Vector Index Architecture Spec) '
+/F1 10 Tf
+/F2 12 Tf
+(Section 2: Hybrid Search and Benchmark Evaluation) '
+/F1 10 Tf
+/F1 10 Tf
+(To capture both broad semantic intent and exact code symbols, DevDocs AI implements Hybrid Search.) '
+/F1 10 Tf
+(Semantic vector retrieval is fused with lexical BM25/regex matching using Reciprocal Rank Fusion \(RRF\).) '
+/F1 10 Tf
+(The RRF constant k is calibrated to 60, allowing balanced combination of dense vectors and exact keywords.) '
+14 TL
+/F1 10 Tf
+(Retrieval performance is continuously measured against ground-truth technical queries.) '
+/F1 10 Tf
+(Evaluation metrics include Hit Rate@5, Precision@5, and Recall@5.) '
+/F1 10 Tf
+(Target benchmark standards require a Hit Rate@5 greater than 0.85 across benchmark queries.) '
+/F1 10 Tf
+(Cloud snapshot backups are automatically executed every 24 hours with a rolling 7-day retention policy.) '
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 7 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000123 00000 n 
+0000000193 00000 n 
+0000000268 00000 n 
+0000001404 00000 n 
+0000001540 00000 n 
+0000002532 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+2668
+%%EOF

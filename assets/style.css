@@ -433,3 +433,17 @@ pre code {
         grid-template-columns: 1fr;
     }
 }
+
+/* Hide Streamlit default Deploy button, hamburger menu and footer for clean presentation */
+.stDeployButton, [data-testid="stDeployButton"], [data-testid="stToolbarActions"], [data-testid="stToolbar"] .stButton {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+#MainMenu {
+    visibility: hidden !important;
+}
+
+footer {
+    visibility: hidden !important;
+}

@@ -1,0 +1,97 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [ 6 0 R 8 0 R ] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Length 1030 >>
+stream
+BT
+50 740 Td
+14 TL
+/F2 16 Tf
+(FastAPI Microservice Specification - Version 1.2) '
+/F1 10 Tf
+/F2 12 Tf
+(Section 1: Server Configuration and Architecture) '
+/F1 10 Tf
+/F1 10 Tf
+(DevDocs AI microservices architecture relies on FastAPI running on top of Uvicorn ASGI server.) '
+/F1 10 Tf
+(The core authentication and routing service binds by default to HTTP port 8000.) '
+/F1 10 Tf
+(The primary service health check endpoint is exposed at GET /api/v1/health returning status ok.) '
+/F1 10 Tf
+(Worker concurrency is governed by Uvicorn process workers configured via WEB_CONCURRENCY environment variable.) '
+14 TL
+/F1 10 Tf
+(Authentication in Version 1.2 is handled through standard HTTP Bearer Tokens.) '
+/F1 10 Tf
+(Clients must obtain a token via POST /api/v1/auth/login with valid client credentials in JSON format.) '
+/F1 10 Tf
+(Tokens are signed with HMAC-SHA256 and carry a validity TTL of 3600 seconds \(1 hour\).) '
+/F1 10 Tf
+(All internal service communications use unencrypted HTTP over the local Docker bridge network.) '
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 922 >>
+stream
+BT
+50 740 Td
+14 TL
+/F2 16 Tf
+(FastAPI Microservice Specification - Version 1.2) '
+/F1 10 Tf
+/F2 12 Tf
+(Section 2: Rate Limiting and Resilience Policy) '
+/F1 10 Tf
+/F1 10 Tf
+(In Version 1.2, rate limiting is applied at the API gateway layer per client IP address.) '
+/F1 10 Tf
+(The standard throughput threshold is fixed at 100 requests per minute per remote IP address.) '
+/F1 10 Tf
+(When a client exceeds this limit, the gateway immediately returns HTTP 429 Too Many Requests.) '
+/F1 10 Tf
+(A Retry-After header with a fixed delay of 60 seconds is sent with every 429 response.) '
+14 TL
+/F1 10 Tf
+(For persistent data storage, the service connects to MongoDB Atlas using standard connection strings.) '
+/F1 10 Tf
+(Connection pool size is capped at 50 connections with a server selection timeout of 5000 milliseconds.) '
+/F1 10 Tf
+(Application logs are emitted in JSON format to stdout for log collection by fluentd.) '
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 7 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000123 00000 n 
+0000000193 00000 n 
+0000000268 00000 n 
+0000001350 00000 n 
+0000001486 00000 n 
+0000002459 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+2595
+%%EOF
