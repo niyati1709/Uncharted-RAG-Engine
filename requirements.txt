@@ -3,3 +3,8 @@
 
 streamlit>=1.32.0
 
+
+# Member 2 - Document Processing and Embeddings
+pypdf
+sentence-transformers
+numpy
