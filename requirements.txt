@@ -1,24 +1,21 @@
-# DevDocs AI - Member 3 Backend Dependencies
+# DevDocs AI - Full Team Dependencies (Members 1, 2, and 3)
 
-# MongoDB Client & Atlas SRV DNS support
-pymongo>=4.6.0
-dnspython>=2.4.0
+# Frontend (Member 1)
+streamlit>=1.32.0
 
-# Environment variables
-python-dotenv>=1.0.0
-
-# Embeddings (coordinated with Member 2: all-MiniLM-L6-v2, 384 dimensions)
-sentence-transformers>=2.2.0
-
-# LLM Provider (Groq free developer tier)
-groq>=0.9.0
-
-# PDF Processing
+# Document Processing & Embeddings (Member 2)
 pypdf>=4.0.0
-
-# Numerical operations & metrics
+sentence-transformers>=2.2.0
 numpy>=1.24.0
 
-# Testing
+# Database & Vector Search (Member 3)
+pymongo>=4.6.0
+dnspython>=2.4.0
+python-dotenv>=1.0.0
+
+# LLM Grounding & API (Member 3)
+groq>=0.9.0
+
+# Testing & Quality
 pytest>=7.4.0
 pytest-mock>=3.12.0
