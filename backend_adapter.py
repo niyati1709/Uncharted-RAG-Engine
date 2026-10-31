@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import importlib
+import hashlib
 from typing import List, Dict, Any, Optional
 
 REQUIRED_BACKEND_FUNCTIONS = ["ingest_document", "list_documents", "answer_question"]
@@ -223,17 +224,34 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
     # 2. MOCK MODE - Clearly Simulated
     time.sleep(0.5)
 
-    # Check for duplicate in mock store
+    # Compute content hash if file exists
+    file_hash = ""
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "rb") as f:
+                file_hash = hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            file_hash = ""
+
+    # Check for duplicate in mock store by content hash or exact file path
     for doc in _MOCK_DOCUMENTS:
-        if doc["filename"].lower() == filename.lower():
+        if (file_hash and doc.get("file_hash") == file_hash) or doc.get("file_path") == file_path:
             return {
                 "success": True,
                 "document_id": doc["document_id"],
-                "filename": filename,
+                "filename": doc["filename"],
                 "status": "simulated_indexed",
-                "message": f"Simulated document '{filename}' is already in mock storage.",
+                "message": f"Simulated document '{doc['filename']}' is already in mock storage.",
                 "is_mock": True
             }
+
+    # If same filename exists but content differs, assign a disambiguated display name
+    display_name = filename
+    existing_names = [d["filename"] for d in _MOCK_DOCUMENTS]
+    if display_name in existing_names:
+        base, ext = os.path.splitext(filename)
+        count = sum(1 for d in existing_names if d.startswith(base))
+        display_name = f"{base} ({count + 1}){ext}"
 
     estimated_pages = 15
     if os.path.exists(file_path):
@@ -245,7 +263,9 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
 
     new_doc = {
         "document_id": doc_id,
-        "filename": filename,
+        "filename": display_name,
+        "file_path": file_path,
+        "file_hash": file_hash,
         "status": "simulated_indexed",
         "total_pages": estimated_pages,
         "total_chunks": chunks,
@@ -256,9 +276,9 @@ def ingest_document(file_path: str, use_mock: bool = True) -> Dict[str, Any]:
     return {
         "success": True,
         "document_id": doc_id,
-        "filename": filename,
+        "filename": display_name,
         "status": "simulated_indexed",
-        "message": f"Document '{filename}' processed in Mock Mode ({estimated_pages} pages, {chunks} chunks).",
+        "message": f"Document '{display_name}' processed in Mock Mode ({estimated_pages} pages, {chunks} chunks).",
         "is_mock": True
     }
 

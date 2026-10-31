@@ -63,7 +63,7 @@ def init_session_state():
         st.session_state.uploaded_files_registry = set()
 
     if "uploaded_file_hashes" not in st.session_state:
-        # Map: sha256_hash -> {"filename": filename}
+        # Map: sha256_hash -> {"filename": filename, "path": path}
         st.session_state.uploaded_file_hashes = {}
 
     backend_status = backend_adapter.check_backend_status()
@@ -101,6 +101,16 @@ def get_data_dir() -> str:
     data_dir = os.path.join(os.path.dirname(__file__), "data")
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
+
+def get_unique_save_path(data_dir: str, filename: str, file_hash: str) -> str:
+    """
+    Returns a unique file path for saving uploaded files, preventing
+    two different files with the identical filename from overwriting each other.
+    Uses hash-isolated subdirectories so os.path.basename(path) remains the exact original filename.
+    """
+    target_dir = os.path.join(data_dir, file_hash[:8])
+    os.makedirs(target_dir, exist_ok=True)
+    return os.path.join(target_dir, filename)
 
 # -----------------------------------------------------------------------------
 # 5. SIDEBAR: UPLOAD & KNOWLEDGE BASE
@@ -183,22 +193,25 @@ def render_sidebar():
         if uploaded_files:
             st.markdown(f"<span style='font-size:0.83rem; font-weight:600; color:#c9d1d9;'>Selected Files ({len(uploaded_files)}):</span>", unsafe_allow_html=True)
             new_files_to_process = []
+            seen_batch_hashes = {}
+            seen_batch_names = set()
 
             for file in uploaded_files:
                 file_bytes = file.getvalue()
                 file_hash = compute_file_hash(file_bytes)
                 size_str = format_file_size(file.size)
 
-                # Duplicate detection via SHA-256 hash or filename
-                is_hash_dup = file_hash in st.session_state.uploaded_file_hashes
-                is_name_dup = file.name in st.session_state.uploaded_files_registry
+                # Check duplicate by content hash (identical file content)
+                is_content_dup = (file_hash in st.session_state.uploaded_file_hashes) or (file_hash in seen_batch_hashes)
+                # Check if same filename was already uploaded
+                is_name_seen = (file.name in st.session_state.uploaded_files_registry) or (file.name in seen_batch_names)
 
                 dup_tag = ""
-                if is_hash_dup:
-                    orig_name = st.session_state.uploaded_file_hashes[file_hash]["filename"]
+                if is_content_dup:
+                    orig_name = st.session_state.uploaded_file_hashes.get(file_hash, {}).get("filename") or seen_batch_hashes.get(file_hash, file.name)
                     dup_tag = f' <span style="color:#d29922; font-size:0.75rem;">(Duplicate of {html.escape(orig_name)})</span>'
-                elif is_name_dup:
-                    dup_tag = ' <span style="color:#d29922; font-size:0.75rem;">(Already uploaded)</span>'
+                elif is_name_seen:
+                    dup_tag = ' <span style="color:#58a6ff; font-size:0.75rem;">(Same filename, new version)</span>'
 
                 safe_name = html.escape(file.name)
                 st.markdown(
@@ -211,8 +224,10 @@ def render_sidebar():
                     unsafe_allow_html=True
                 )
 
-                if not is_hash_dup and not is_name_dup:
+                if not is_content_dup:
                     new_files_to_process.append((file, file_hash))
+                    seen_batch_hashes[file_hash] = file.name
+                    seen_batch_names.add(file.name)
 
             # Process Button
             upload_btn = st.button(
@@ -233,14 +248,16 @@ def render_sidebar():
                 for idx, (file, f_hash) in enumerate(new_files_to_process):
                     safe_file_name = html.escape(file.name)
                     status_text.text(f"Processing ({idx+1}/{total}): {file.name}...")
-                    save_path = os.path.join(data_dir, file.name)
+
+                    # Use unique save path to prevent overwriting different files with the same filename
+                    save_path = get_unique_save_path(data_dir, file.name, f_hash)
 
                     try:
-                        # Save file to disk
+                        # Save file to disk safely
                         with open(save_path, "wb") as f:
                             f.write(file.getbuffer())
 
-                        # Call backend ingestion function
+                        # Call backend ingestion with the preserved, isolated file path
                         result = backend_adapter.ingest_document(
                             save_path,
                             use_mock=st.session_state.use_mock
@@ -248,7 +265,7 @@ def render_sidebar():
 
                         if result.get("success"):
                             st.session_state.uploaded_files_registry.add(file.name)
-                            st.session_state.uploaded_file_hashes[f_hash] = {"filename": file.name}
+                            st.session_state.uploaded_file_hashes[f_hash] = {"filename": file.name, "path": save_path}
                             successful_count += 1
                         else:
                             err = result.get("message", "Ingestion failed.")
@@ -271,13 +288,14 @@ def render_sidebar():
         # SECTION 3: KNOWLEDGE BASE
         st.markdown('<div class="sidebar-section-title">📚 Knowledge Base</div>', unsafe_allow_html=True)
         docs = []
-        backend_error = None
+        sidebar_error = None
 
+        # Handle exceptions from list_documents() safely
         try:
             docs = backend_adapter.list_documents(use_mock=st.session_state.use_mock)
-        except backend_adapter.BackendError as e:
-            backend_error = str(e)
-            st.error(f"❌ Backend Document Listing Error: {html.escape(backend_error)}")
+        except Exception as e:
+            sidebar_error = str(e)
+            st.error(f"❌ Backend Document Listing Error: {html.escape(sidebar_error)}")
 
         total_docs = len(docs)
 
@@ -288,7 +306,7 @@ def render_sidebar():
             total_chunks = sum(d.get("total_chunks", 0) for d in docs)
             st.metric("Total Chunks", total_chunks)
 
-        if total_docs == 0 and not backend_error:
+        if total_docs == 0 and not sidebar_error:
             st.info("No documents indexed yet. Upload a PDF above to build your knowledge base.")
             # Optional demo data loader for mock mode
             if st.session_state.use_mock:
@@ -301,12 +319,13 @@ def render_sidebar():
                     filename = html.escape(str(doc.get("filename", "unknown.pdf")))
                     pages = html.escape(str(doc.get("total_pages", "N/A")))
                     chunks = html.escape(str(doc.get("total_chunks", "N/A")))
+                    status_text = html.escape(str(doc.get("status", "indexed")))
                     is_mock_doc = doc.get("is_mock", st.session_state.use_mock)
 
                     if is_mock_doc:
-                        status_html = '<span class="doc-status-simulated">● simulated (demo)</span>'
+                        status_html = f'<span class="doc-status-simulated">● {status_text}</span>'
                     else:
-                        status_html = '<span class="doc-status-badge">● indexed</span>'
+                        status_html = f'<span class="doc-status-badge">● {status_text}</span>'
 
                     st.markdown(
                         f"""
@@ -327,7 +346,7 @@ def render_sidebar():
 
         st.divider()
 
-        # Session Reset Option
+        # Session Reset Options
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             if st.button("🗑️ Clear Chat", use_container_width=True):
@@ -398,11 +417,14 @@ def render_chat_interface():
     backend_status = backend_adapter.check_backend_status()
     is_real_ready = backend_status["available"]
 
-    # Check indexed documents safely
+    # Check indexed documents safely and handle exceptions from list_documents()
+    docs = []
+    chat_error = None
     try:
         docs = backend_adapter.list_documents(use_mock=st.session_state.use_mock)
-    except backend_adapter.BackendError:
-        docs = []
+    except Exception as e:
+        chat_error = str(e)
+        st.error(f"❌ Backend Document Retrieval Error: {html.escape(chat_error)}")
 
     docs_exist = len(docs) > 0
 
@@ -464,19 +486,19 @@ def render_chat_interface():
             unsafe_allow_html=True
         )
 
-        # Quick starter prompt chips for demonstration
+        # Quick starter prompt chips for demonstration (disabled if knowledge base is empty)
         st.markdown("<span style='font-size:0.85rem; font-weight:600; color:#8b949e;'>💡 Quick Prompts:</span>", unsafe_allow_html=True)
         col_q1, col_q2, col_q3 = st.columns(3)
         with col_q1:
-            if st.button("How do I create async API routes?", key="q1_btn", use_container_width=True):
+            if st.button("How do I create async API routes?", key="q1_btn", use_container_width=True, disabled=not docs_exist):
                 st.session_state.prompt_to_send = "How do I create async API routes in FastAPI?"
                 st.rerun()
         with col_q2:
-            if st.button("What are Python type annotations?", key="q2_btn", use_container_width=True):
+            if st.button("What are Python type annotations?", key="q2_btn", use_container_width=True, disabled=not docs_exist):
                 st.session_state.prompt_to_send = "What are the best practices for Python type annotations?"
                 st.rerun()
         with col_q3:
-            if st.button("Explain RAG chunking parameters", key="q3_btn", use_container_width=True):
+            if st.button("Explain RAG chunking parameters", key="q3_btn", use_container_width=True, disabled=not docs_exist):
                 st.session_state.prompt_to_send = "Explain the RAG chunking strategy and parameters"
                 st.rerun()
 
@@ -500,7 +522,8 @@ def render_chat_interface():
                 render_citations(sources)
 
     # Check if a prompt was queued via starter buttons
-    user_query = st.chat_input("Ask a question about your uploaded documentation...")
+    chat_placeholder = "Ask a question about your documentation..." if docs_exist else "Upload a document in sidebar first..."
+    user_query = st.chat_input(chat_placeholder)
     if st.session_state.prompt_to_send:
         user_query = st.session_state.prompt_to_send
         st.session_state.prompt_to_send = None
@@ -512,7 +535,7 @@ def render_chat_interface():
             st.warning("Please type a non-empty question.")
             return
 
-        # TASK 5: Prevent question answering when no documents are indexed
+        # ITEM 4: Prevent question answering when no documents are indexed
         if not docs_exist:
             st.error("❌ Cannot answer question: No documents are currently indexed in the knowledge base. Please upload and process a PDF document in the sidebar first.")
             return
