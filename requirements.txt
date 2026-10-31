@@ -1,0 +1,5 @@
+# DevDocs AI - Frontend Requirements
+# Install via: pip install -r requirements.txt
+
+streamlit>=1.32.0
+
